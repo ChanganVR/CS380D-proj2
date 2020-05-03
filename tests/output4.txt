@@ -1,0 +1,10 @@
+1 Transfer 300
+Started by Node 1
+1 Transfer 400
+1 SnapshotToken -1
+---Node states
+node 1 = 300
+node 2 = 1100
+---Channel states
+channel (1 -> 2) = 0
+channel (2 -> 1) = 100

@@ -1,0 +1,30 @@
+StartMaster
+CreateNode 1 500
+CreateNode 2 500
+CreateNode 3 500
+CreateNode 4 500
+Send 1 2 100
+Send 2 3 200
+Send 3 4 300
+Send 4 1 400
+BeginSnapshot 1
+Receive 2 1
+Receive 2 1
+Receive 3 2
+Receive 3 2
+Receive 4 3
+Receive 4 3
+Receive 1 4
+Receive 1 4
+Send 1 2 100
+Does it send Snapshot in the second round?
+Receive 2 1
+Receive 2 1
+Send 2 3 200
+Receive 3 2
+Receive 3 2
+Send 3 4 300
+Receive 4 3
+Receive 4 3
+CollectState
+PrintSnapshot

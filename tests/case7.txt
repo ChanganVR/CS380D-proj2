@@ -1,0 +1,13 @@
+StartMaster
+CreateNode 1 1000
+CreateNode 3 500
+CreateNode 5 500
+BeginSnapshot 1
+Send 3 5 100
+Send 5 3 100
+Receive 3
+Receive 3
+Receive 5
+Receive 5
+CollectState
+PrintSnapshot
