@@ -1,7 +1,9 @@
 import random
 import time
+import logging
 
-class Message():
+
+class Message:
     def __init__(self, sender):
         self.sender = sender
     
@@ -29,6 +31,45 @@ class Money(Message):
             node.in_q_states[self.sender_id] += self.money
         # print for debugging purpose
         # print(node.node_id, node.money)
+
+
+class VoteReq(Message):
+    def __init__(self, vote_id):
+        self.vote_id = vote_id
+
+    def exec(self, node):
+        node.vote_status[self.vote_id] = 'requested'
+
+
+class Vote(Message):
+    def __init__(self, sender_id, vote_id, vote):
+        self.sender_id = sender_id
+        self.vote_id = vote_id
+        self.vote = vote
+
+    def exec(self, node):
+        if self.vote_id in node.votes:
+            node.votes[self.vote_id][self.sender_id] = self.vote
+        else:
+            logging.info('Received vote for {} from {} after timeout'.format(self.vote_id, self.sender_id))
+
+
+class Commit(Message):
+    def __init__(self, vote_id):
+        self.vote_id = vote_id
+
+    def exec(self, node):
+        if self.vote_id in node.vote_status:
+            node.vote_status[self.vote_id] = 'commit'
+
+
+class Abort(Message):
+    def __init__(self, vote_id):
+        self.vote_id = vote_id
+
+    def exec(self, node):
+        if self.vote_id in node.vote_status:
+            node.vote_status[self.vote_id] = 'abort'
 
 
 class Send(Message):

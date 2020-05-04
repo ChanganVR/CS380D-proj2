@@ -1,6 +1,0 @@
-StartMaster
-CreateNode 1 100
-CreateNode 2 100
-Send 1 2 101
-Send 1 2 99
-Receive 2

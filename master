@@ -1,3 +1,0 @@
-#! /bin/bash
-
-python -m algo $1
