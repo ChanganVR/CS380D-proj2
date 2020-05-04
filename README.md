@@ -1,10 +1,10 @@
-# CS380D-proj1
+# CS380D-proj2
 In this project, we build a crude distributed banking system, 
 where nodes can join the cluster and transfer money between each other.
-We also implement the Chandy-Lamport algorithm to produce consistent global snapshot of all nodes.
+We also implement the 2-phase commit algorithm to produce consistent transaction across all nodes.
 
 
-Project Spec: https://github.com/vijay03/cs380d-s20/blob/master/projects/project1.pdf
+Project Spec: https://docs.google.com/document/d/167ZNK8qxkkPh6bU4sqloyBiIub3WGYpdjwu2_6Z-jKA/edit?fbclid=IwAR0wo1P5XRtxDsEQiKOjyseEtyrIzc_z1EGeczANBc8mMr93db7GyZdPWzg
 
 ### Name, UT EIDs, UTCS IDs
 Dian Chen, dc44632, dchen  
