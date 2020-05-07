@@ -1,3 +1,4 @@
+import logging
 from .messages import *
 
 
@@ -22,3 +23,21 @@ class VoteResponse:
         # vote: 0 means NO and 1 means YES
         self.vote = vote
         self.delay = delay
+
+
+class KillSelf:
+    def __init__(self, time_to_execute):
+        self.time_to_execute = time_to_execute
+
+    def exec(self, node):
+        node.killed = True
+        logging.info(f'Node {node.node_id} killed')
+
+class ResumeSelf:
+    def __init__(self, time_to_execute):
+        self.time_to_execute = time_to_execute
+
+    def exec(self, node):
+        node.killed = False
+        logging.info(f'Node {node.node_id} resumed')
+        node.recover()

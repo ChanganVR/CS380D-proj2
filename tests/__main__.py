@@ -30,7 +30,7 @@ class BasicTest(unittest.TestCase):
         cls.master = create_node(node_id=0,
                              vote_responses={0: VoteResponse(vote=1, delay=0), 1: VoteResponse(vote=1, delay=0)},
                              tasks=[SendVoteRequest(vote_id=0, time_to_execute=1),
-                                    SendVoteRequest(vote_id=1, time_to_execute=1)],
+                                    SendVoteRequest(vote_id=1, time_to_execute=2)],
                              node_cls=MasterNode)
 
         cls.participant1 = create_node(node_id=1,
