@@ -17,13 +17,8 @@ Changan Chen, cc68838, changan
 python (>=3.7)
 ```
 
-### Usage
-This project needs no Makefile or compilation. 
-To run the code, run the following command under the root directory.
-```
-./master <commands_file.txt>
-```
-
+### Run Tests
+`python -m tests`
 
 ### Protocol and Implementation
 This distributed banking system is implemented based on multi-thread, where each node is one 
