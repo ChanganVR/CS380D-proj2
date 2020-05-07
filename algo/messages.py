@@ -53,6 +53,9 @@ class Vote(Message):
         else:
             logging.info('Received vote for {} from {} after timeout'.format(self.vote_id, self.sender_id))
 
+    def __str__(self):
+        return str(self.vote)
+
 
 class Commit(Message):
     def __init__(self, vote_id):
