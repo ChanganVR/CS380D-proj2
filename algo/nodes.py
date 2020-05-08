@@ -117,7 +117,9 @@ class Node(Thread):
                         else:
                             logging.info('Node {} votes NO for {}'.format(self.node_id, vote_id))
                             cur_time = time.time()
-                            self.log_vote(cur_time, vote_id, 'no')
+                            # self.log_vote(cur_time, vote_id, 'no')
+                            self.log_vote(cur_time, vote_id, 'abort')
+                            logging.info('Node {} aborts vote {}'.format(self.node_id, vote_id))
                             del self.vote_status[vote_id]
                     elif status == 'commit':
                         cur_time = time.time()
