@@ -75,6 +75,38 @@ class Abort(Message):
             node.vote_status[self.vote_id] = 'abort'
 
 
+class DecisionReq(Message):
+    def __init__(self, vote_id, sender_id):
+        self.vote_id = vote_id
+        self.sender_id = sender_id
+
+    def exec(self, node):
+        statuses = list()
+        read_path = f'logs/{node.node_id}'
+        with open(read_path, 'r') as file:
+            lines = file.readlines()
+            for line in lines:
+                _, vote_id, msg = line.rstrip().split(':')
+                if vote_id == self.vote_id:
+                    if msg == 'abort':
+                        # reply ABORT
+                        node.out_q.get(self.sender_id).put(Abort(self.vote_id))
+                        return
+                    elif msg == 'commit':
+                        # reply COMMIT
+                        node.out_q.get(self.sender_id).put(Commit(self.vote_id))
+                        return
+                    else:
+                        # append all other possible message to the statuses list
+                        statuses.append(msg)
+            if 'yes' not in statuses:
+                # abort locally and notify master if the node has not voted yet
+                node.vote_responses[self.vote_id].vote = 0
+                node.prepare_vote(self.vote_id)
+                # reply ABORT
+                node.out_q.get(self.sender_id).put(Abort(self.vote_id))
+
+
 class Send(Message):
     def __init__(self, receiver_id, money):
         self.receiver_id = receiver_id

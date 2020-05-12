@@ -33,6 +33,7 @@ class KillSelf:
         node.killed = True
         logging.info(f'Node {node.node_id} killed')
 
+
 class ResumeSelf:
     def __init__(self, time_to_execute):
         self.time_to_execute = time_to_execute

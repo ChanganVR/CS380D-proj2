@@ -63,7 +63,7 @@ def main():
 
     participant1 = create_node(node_id=1,
                                vote_responses={0: VoteResponse(vote=0, delay=0.5), 1: VoteResponse(vote=1, delay=0.5)},
-                               tasks=[],
+                               tasks=[KillSelf(time_to_execute=2), ResumeSelf(time_to_execute=5)],
                                node_cls=Node)
     participant2 = create_node(node_id=2,
                                vote_responses={0: VoteResponse(vote=1, delay=0.5), 1: VoteResponse(vote=1, delay=0.5)},
