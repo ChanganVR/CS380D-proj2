@@ -42,7 +42,7 @@ class BasicTest(unittest.TestCase):
                                    tasks=[],
                                    node_cls=Node)
 
-        time.sleep(2)
+        time.sleep(3)
 
 
     def test_votes(self):
@@ -61,7 +61,8 @@ class BasicTest(unittest.TestCase):
                 for line in log1.readlines():
                     _, vote_id, status = line.rstrip().split(':')
                     vote_id = int(vote_id)
-                    self.assertTrue(status == vote_responses[vote_id] or status == 'requested')
+                    if status in ['abort', 'commit']:
+                        self.assertTrue(status == vote_responses[vote_id])
 
     @classmethod
     def tearDownClass(self):
