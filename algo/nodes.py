@@ -13,7 +13,6 @@ class Node(Thread):
     def __init__(self, node_id, vote_responses, tasks, freq=1000):
         super().__init__()
         self.node_id = node_id
-        # self.money = init_money
                 
         self.in_q = dict()
         self.out_q = dict()
@@ -30,27 +29,50 @@ class Node(Thread):
         self.msg_to_send = dict()
         # key: vote_id, value: vote time
         self.pending_times = dict()
+        # key: node_id for in channel, value: a list of (start, end) time interval for link failure
+        self.in_q_failure = dict()
+        # key: node_id for out channel, value: a list of (start, end) time interval for link failure
+        self.out_q_failure = dict()
 
         self.timeout = 2
         self.killed = False
-    
+
+    def terminate(self):
+        self.stop = True
+
     def add_in_channel(self, node_id, queue):
         self.in_q[node_id] = queue
+        self.in_q_failure[node_id] = list()
     
     def add_out_channel(self, node_id, queue):
         self.out_q[node_id] = queue
+        self.out_q_failure[node_id] = list()
+
+    def enqueue_with_failure(self, node_id, msg):
+        # discard the message if the channel currently fails
+        cur_time = time.time() - self.start_time
+        for period in self.out_q_failure[node_id]:
+            # period[0] is start time and period[1] is end time for the link failure
+            if period[0] <= cur_time <= period[1]:
+                logging.info(f'Message {msg} from node {self.node_id} to {node_id} not sent due to link failure')
+                return
+
+        self.out_q.get(node_id).put(msg)
     
-    def terminate(self):
-        self.stop = True
-    
-    def _receive_queue(self, queue):
-        if queue.qsize() > 0:
-            msg = queue.get()
+    def receive_queue_with_failure(self, node_id):
+        # discard all messages in the channel if the channel currently fails
+        cur_time = time.time() - self.start_time
+        for period in self.in_q_failure[node_id]:
+            # period[0] is start time and period[1] is end time for the link failure
+            if period[0] <= cur_time <= period[1]:
+                if self.in_q.get(node_id).qsize() > 0:
+                    self.in_q.get(node_id).queue.clear()
+                    logging.info(f'All messages from node {node_id} to {self.node_id} lost due to link failure')
+                return
+
+        if self.in_q.get(node_id).qsize() > 0:
+            msg = self.in_q.get(node_id).get()
             msg.exec(self)
-    
-    def _receive_master(self):
-        queue = self.in_q.get(0)
-        self._receive_queue(queue)
 
     def log_vote(self, time, vote_id, msg):
         write_path = f'logs/{self.node_id}'
@@ -85,14 +107,14 @@ class Node(Thread):
                     continue
                 if vote_id in votes:
                     # Termination protocal
-                    self.decision_request(vote_id)
+                    self.decision_request(int(vote_id))
                 # else:
                     # cur_time = time.time()
                     # self.log_vote(cur_time, vote_id, 'abort')
                     # vote_id = int(vote_id)
                     # self.msg_to_send[vote_id] = (Vote(self.node_id, vote_id, 0), time_to_send) # Notify coordinator, not sure if correct
 
-    def recover_as_master(self):
+    def recover_as_master(self, lines):
         raise NotImplementedError
 
     def prepare_vote(self, vote_id):
@@ -106,42 +128,42 @@ class Node(Thread):
 
     def vote_yes(self, vote_id):
         self.vote_status[vote_id] = 'pending'
-        logging.info('Node {} votes YES for {}, changing status to pending'.format(self.node_id, vote_id))
+        logging.info(f'Node {self.node_id} votes YES for vote {vote_id}, changing status to pending')
         cur_time = time.time()
         self.log_vote(cur_time, vote_id, 'yes')
         self.pending_times[vote_id] = cur_time
 
     def vote_no(self, vote_id):
         self.vote_status[vote_id] = 'abort'
-        logging.info('Node {} votes NO for {}'.format(self.node_id, vote_id))
+        logging.info(f'Node {self.node_id} votes NO for vote {vote_id}')
         self.abort(vote_id)
 
     def commit(self, vote_id):
         cur_time = time.time()
         self.log_vote(cur_time, vote_id, 'commit')
-        logging.info('Node {} commits vote {}'.format(self.node_id, vote_id))
+        logging.info(f'Node {self.node_id} commits vote {vote_id}')
         del self.vote_status[vote_id]
 
     def abort(self, vote_id):
         cur_time = time.time()
         self.log_vote(cur_time, vote_id, 'abort')
-        logging.info('Node {} aborts vote {}'.format(self.node_id, vote_id))
+        logging.info(f'Node {self.node_id} aborts vote {vote_id}')
         del self.vote_status[vote_id]
 
     def decision_request(self, vote_id):
         # check if the master hasn't sent the decision for too long using termination protocol
+        logging.info(f'Node {self.node_id} timeout, initiate decision requests for vote {vote_id}')
         for node_id, out_q in self.out_q.items():
-            out_q.put(DecisionReq(vote_id, self.node_id))
+            self.enqueue_with_failure(node_id, DecisionReq(vote_id, self.node_id))
         # reset timer for next decision request
         self.pending_times[vote_id] = time.time()
 
     def run(self):
         while True:
             if not self.killed:
-                # self._receive_master()
                 # receive from every node for the need of termination protocol
                 for node_id, in_q in self.in_q.items():
-                    self._receive_queue(in_q)
+                    self.receive_queue_with_failure(node_id)
 
                 # check vote queue
                 for vote_id, status in list(self.vote_status.items()):
@@ -158,7 +180,7 @@ class Node(Thread):
                 for vote_id, (msg, time_to_send) in list(self.msg_to_send.items()):
                     cur_time = time.time()
                     if cur_time >= time_to_send:
-                        self.out_q.get(0).put(msg)
+                        self.enqueue_with_failure(0, msg)
                         self.log_vote(cur_time, vote_id, 'requested')
                         del self.msg_to_send[vote_id]
 
@@ -208,9 +230,7 @@ class MasterNode(Node):
             if not self.killed:
                 # check response from participant nodes
                 for node, queue in self.in_q.items():
-                    while not queue.empty():
-                        msg = queue.get()
-                        msg.exec(self)
+                    self.receive_queue_with_failure(node)
 
                 # collect messages from other nodes
                 for vote_id, votes in list(self.votes.items()):
@@ -222,24 +242,24 @@ class MasterNode(Node):
                             self.log_status(cur_time, vote_id, 'commit')
                             # all vote YES
                             for node, queue in self.out_q.items():
-                                queue.put(Commit(vote_id))
-                            logging.info('Master decides to commit vote {}'.format(vote_id))
+                                self.enqueue_with_failure(node, Commit(vote_id))
+                            logging.info(f'Master decides to commit vote {vote_id}')
                             del self.votes[vote_id]
                         else:
                             abort = True
-                            logging.info('Master decides to abort vote {} because of partial agreement'.format(vote_id))
+                            logging.info(f'Master decides to abort vote {vote_id} because of partial agreement')
                     elif 0 in votes:
                         abort = True
-                        logging.info('Master decides to abort vote {} because of partial agreement'.format(vote_id))
+                        logging.info(f'Master decides to abort vote {vote_id} because of partial agreement')
                     elif time.time() > self.vote_req_times[vote_id] + self.timeout:
                         abort = True
-                        logging.info('Master decides to abort vote {} because of timeout'.format(vote_id))
+                        logging.info(f'Master decides to abort vote {vote_id} because of timeout')
 
                     if abort:
                         cur_time = time.time()
                         self.log_status(cur_time, vote_id, 'abort')
                         for node, queue in self.out_q.items():
-                            queue.put(Abort(vote_id))
+                            self.enqueue_with_failure(node, Abort(vote_id))
                         del self.votes[vote_id]
 
             # send votes
@@ -249,7 +269,7 @@ class MasterNode(Node):
                     if not self.killed and isinstance(task, VoteResponse):
                         self.log_status(cur_time, task.vote_id, 'start')
                         task.exec(self)
-                        logging.info('Execute {} at time {:.1f}s'.format(task, time.time() - self.start_time))
+                        logging.info(f'Execute {task} at time {(time.time() - self.start_time) :.1f}s')
                         self.tasks.remove(task)
                     else:
                         # Kill or resume

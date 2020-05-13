@@ -9,7 +9,7 @@ class SendVoteRequest:
 
     def exec(self, node):
         for node_id, queue in node.out_q.items():
-            queue.put(VoteReq(self.vote_id))
+            node.enqueue_with_failure(node_id, VoteReq(self.vote_id))
 
         node.vote_req_times[self.vote_id] = time.time()
         node.votes[self.vote_id] = [node.vote_responses[self.vote_id].vote] + [-1 for _ in range(len(node.out_q))]

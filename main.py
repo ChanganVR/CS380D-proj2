@@ -16,7 +16,7 @@ event = Event()
 
 def create_node(node_id: int, vote_responses: dict, tasks: list, node_cls=Node):
     """
-    Create a node with id `node_id`, and initial money `init_money`
+    Create a node with id `node_id`,  vote response for each vote request, tasks to be executed by that node, of type node_cls
     """
     # initialize the new node (node1)
     node1 = node_cls(node_id, vote_responses, tasks)
@@ -41,6 +41,36 @@ def create_node(node_id: int, vote_responses: dict, tasks: list, node_cls=Node):
     return node1
 
 
+def link_failure(send_node, receive_node, start_time, end_time):
+    """
+    Simulate link failures for channels, all messages in the channel would be discard during this time
+    :param send_node:  sender of the channel
+    :param receive_node:  receiver of the channel
+    :param start_time:  the time when the link failure occurs
+    :param end_time:  the time when the link failure is repaired
+    :return:
+    """
+    period = (start_time, end_time)
+    send_node.out_q_failure[receive_node.node_id].append(period)
+    receive_node.in_q_failure[send_node.node_id].append(period)
+
+
+def network_partition(node_group1, node_group2, start_time, end_time):
+    """
+    Simulate network partition failure
+    Partition the nodes into 2 groups, where nodes in group1 can not communicate with nodes in group2 during the specified time
+    :param node_group1:  a list of nodes in group1
+    :param node_group2:  a list of nodes in group2
+    :param start_time:  the time when the network partition failure occurs
+    :param end_time:  the time when the network partition is repaired
+    :return:
+    """
+    for n1 in node_group1:
+        for n2 in node_group2:
+            link_failure(n1, n2, start_time, end_time)
+            link_failure(n2, n1, start_time, end_time)
+
+
 def main():
 
     import os
@@ -56,20 +86,23 @@ def main():
     master = create_node(node_id=0,
                          vote_responses={0: VoteResponse(vote=1, delay=0), 1: VoteResponse(vote=1, delay=0)},
                          tasks=[SendVoteRequest(vote_id=0, time_to_execute=1),
-                                KillSelf(time_to_execute=2),
-                                ResumeSelf(time_to_execute=2.5),
+                                # KillSelf(time_to_execute=2),
+                                # ResumeSelf(time_to_execute=2.5),
                                 SendVoteRequest(vote_id=1, time_to_execute=1.5)],
                          node_cls=MasterNode)
 
     participant1 = create_node(node_id=1,
                                vote_responses={0: VoteResponse(vote=0, delay=0.5), 1: VoteResponse(vote=1, delay=0.5)},
-                               tasks=[KillSelf(time_to_execute=2), ResumeSelf(time_to_execute=5)],
+                               tasks=[],
                                node_cls=Node)
     participant2 = create_node(node_id=2,
                                vote_responses={0: VoteResponse(vote=1, delay=0.5), 1: VoteResponse(vote=1, delay=0.5)},
                                tasks=[],
                                node_cls=Node)
 
+    # link_failure(participant1, master, 2, 5)
+    # link_failure(master, participant1, 2, 5)
+    network_partition([master, participant1], [participant2], 2, 5)
 
 if __name__ == '__main__':
     main()
