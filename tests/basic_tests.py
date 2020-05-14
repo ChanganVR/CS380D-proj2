@@ -2,9 +2,10 @@ import unittest
 import logging
 import time
 
-from main import create_node
+from main import create_node, link_failure, network_partition
 from algo.nodes import Node, MasterNode
 from algo.tasks import *
+
 
 class BasicTest(unittest.TestCase):
 
@@ -30,3 +31,4 @@ class BasicTest(unittest.TestCase):
         time.sleep(1)
 
         self.assertTrue(participant1.vote_responses[0])
+

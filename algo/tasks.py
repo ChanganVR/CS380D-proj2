@@ -1,4 +1,3 @@
-import logging
 from .messages import *
 
 
@@ -15,7 +14,7 @@ class SendVoteRequest:
         node.votes[self.vote_id] = [node.vote_responses[self.vote_id].vote] + [-1 for _ in range(len(node.out_q))]
 
     def __str__(self):
-        return 'send vote request {}'.format(self.vote_id)
+        return f'send vote request for transaction {self.vote_id}'
 
 
 class VoteResponse:

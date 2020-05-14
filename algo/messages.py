@@ -1,4 +1,3 @@
-import random
 import time
 import logging
 
@@ -20,9 +19,10 @@ class VoteReq(Message):
 
     def exec(self, node):
         node.vote_status[self.vote_id] = 'requested'
+        node.log_vote(time.time(), self.vote_id, 'requested')
 
     def __str__(self):
-        return f'Vote Request for vote {self.vote_id}'
+        return f'Vote Request for transaction {self.vote_id}'
 
 
 class Vote(Message):
@@ -35,10 +35,10 @@ class Vote(Message):
         if self.vote_id in node.votes:
             node.votes[self.vote_id][self.sender_id] = self.vote
         else:
-            logging.info(f'Received vote for {self.vote_id} from {self.sender_id} after timeout')
+            logging.info(f'Received vote for transaction {self.vote_id} from {self.sender_id} after timeout')
 
     def __str__(self):
-        return f'Vote for vote {self.vote_id}'
+        return f'Vote for transaction {self.vote_id}'
 
 
 class Commit(Message):
@@ -50,7 +50,7 @@ class Commit(Message):
             node.vote_status[self.vote_id] = 'commit'
 
     def __str__(self):
-        return f'Commit for vote {self.vote_id}'
+        return f'Commit for transaction {self.vote_id}'
 
 
 class Abort(Message):
@@ -62,7 +62,7 @@ class Abort(Message):
             node.vote_status[self.vote_id] = 'abort'
 
     def __str__(self):
-        return f'Abort for vote {self.vote_id}'
+        return f'Abort for transaction {self.vote_id}'
 
 
 class DecisionReq(Message):
@@ -97,4 +97,4 @@ class DecisionReq(Message):
                 node.enqueue_with_failure(self.sender_id, Abort(self.vote_id))
 
     def __str__(self):
-        return f'Decision Request for vote {self.vote_id}'
+        return f'Decision Request for transaction {self.vote_id}'

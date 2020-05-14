@@ -1,11 +1,6 @@
 import os.path as osp
-import weakref
-import time
-import logging
-from threading import Thread, Lock
-from queue import Queue
+from threading import Thread
 
-from .messages import *
 from .tasks import *
 
 
@@ -54,7 +49,7 @@ class Node(Thread):
         for period in self.out_q_failure[node_id]:
             # period[0] is start time and period[1] is end time for the link failure
             if period[0] <= cur_time <= period[1]:
-                logging.info(f'Message {msg} from node {self.node_id} to {node_id} not sent due to link failure')
+                logging.info(f'Message Lost: {msg} from node {self.node_id} to {node_id} discarded due to link failure')
                 return
 
         self.out_q.get(node_id).put(msg)
@@ -83,6 +78,7 @@ class Node(Thread):
     def recover(self):
         write_path = f'logs/{self.node_id}'
         with open(write_path, 'r') as file:
+            # check if self is the master node
             lines = file.readlines()
             for line in lines:
                 _, vote_id, msg = line.rstrip().split(':')
@@ -96,23 +92,31 @@ class Node(Thread):
 
             for line in lines:
                 _, vote_id, msg = line.rstrip().split(':')
-                if msg in ['yes', 'no']:
-                    votes[vote_id] = msg
+                if msg in ['yes']:
+                    votes[int(vote_id)] = msg
                 elif msg in ['requested', 'commit', 'abort']:
-                    statuses[vote_id] = msg
+                    statuses[int(vote_id)] = msg
 
             for vote_id, status in statuses.items():
-                _, vote_id, msg = line.rstrip().split(':')
-                if msg in ['commit', 'abort']:
+                # ignore the transactions that already have decisions
+                if status in ['commit', 'abort']:
                     continue
+
                 if vote_id in votes:
-                    # Termination protocal
+                    # uncertain - termination protocal
                     self.decision_request(int(vote_id))
-                # else:
-                    # cur_time = time.time()
-                    # self.log_vote(cur_time, vote_id, 'abort')
-                    # vote_id = int(vote_id)
-                    # self.msg_to_send[vote_id] = (Vote(self.node_id, vote_id, 0), time_to_send) # Notify coordinator, not sure if correct
+                else:
+                    # abort if no "yes" was logged
+                    cur_time = time.time()
+                    self.log_vote(cur_time, vote_id, 'abort')
+                    logging.info(f'Node {self.node_id} aborts transaction {vote_id}')
+                    if vote_id in self.vote_status:
+                        del self.vote_status[vote_id]
+
+                    # Notify coordinator
+                    self.vote_responses[vote_id].vote = 0
+                    self.msg_to_send[vote_id] = (Vote(self.node_id, vote_id, self.vote_responses[vote_id].vote),
+                                                 time.time() + self.vote_responses[vote_id].delay)
 
     def recover_as_master(self, lines):
         raise NotImplementedError
@@ -128,31 +132,31 @@ class Node(Thread):
 
     def vote_yes(self, vote_id):
         self.vote_status[vote_id] = 'pending'
-        logging.info(f'Node {self.node_id} votes YES for vote {vote_id}, changing status to pending')
+        logging.info(f'Node {self.node_id} votes YES for transaction {vote_id}, changing status to pending')
         cur_time = time.time()
         self.log_vote(cur_time, vote_id, 'yes')
         self.pending_times[vote_id] = cur_time
 
     def vote_no(self, vote_id):
         self.vote_status[vote_id] = 'abort'
-        logging.info(f'Node {self.node_id} votes NO for vote {vote_id}')
+        logging.info(f'Node {self.node_id} votes NO for transaction {vote_id}')
         self.abort(vote_id)
 
     def commit(self, vote_id):
         cur_time = time.time()
         self.log_vote(cur_time, vote_id, 'commit')
-        logging.info(f'Node {self.node_id} commits vote {vote_id}')
+        logging.info(f'Node {self.node_id} commits transaction {vote_id}')
         del self.vote_status[vote_id]
 
     def abort(self, vote_id):
         cur_time = time.time()
         self.log_vote(cur_time, vote_id, 'abort')
-        logging.info(f'Node {self.node_id} aborts vote {vote_id}')
+        logging.info(f'Node {self.node_id} aborts transaction {vote_id}')
         del self.vote_status[vote_id]
 
     def decision_request(self, vote_id):
         # check if the master hasn't sent the decision for too long using termination protocol
-        logging.info(f'Node {self.node_id} timeout, initiate decision requests for vote {vote_id}')
+        logging.info(f'Node {self.node_id} timeout, initiate decision requests for transaction {vote_id}')
         for node_id, out_q in self.out_q.items():
             self.enqueue_with_failure(node_id, DecisionReq(vote_id, self.node_id))
         # reset timer for next decision request
@@ -176,13 +180,14 @@ class Node(Thread):
                     elif status == 'pending' and time.time() > self.pending_times[vote_id] + self.timeout:
                         self.decision_request(vote_id)
 
-                # check msg_to_send list
-                for vote_id, (msg, time_to_send) in list(self.msg_to_send.items()):
-                    cur_time = time.time()
-                    if cur_time >= time_to_send:
-                        self.enqueue_with_failure(0, msg)
-                        self.log_vote(cur_time, vote_id, 'requested')
-                        del self.msg_to_send[vote_id]
+            # check msg_to_send list
+            for vote_id, (msg, time_to_send) in list(self.msg_to_send.items()):
+                cur_time = time.time()
+                if self.killed:
+                    del self.msg_to_send[vote_id]
+                elif cur_time >= time_to_send:
+                    self.enqueue_with_failure(0, msg)
+                    del self.msg_to_send[vote_id]
 
             # check tasks
             for i, task in enumerate(self.tasks):
@@ -200,7 +205,6 @@ class Node(Thread):
 class MasterNode(Node):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # self.tasks = Queue()
         self.ack_wait = list()
         self.votes = dict()
         self.vote_req_times = dict()
@@ -215,14 +219,23 @@ class MasterNode(Node):
 
     def recover_as_master(self, lines):
         decisions = dict()
+
         for line in lines:
             _, vote_id, msg = line.rstrip().split(':')
-            decisions[vote_id] = msg
+            if msg in ['start', 'commit', 'abort']:
+                decisions[int(vote_id)] = msg
 
         for vote_id, msg in decisions.items():
+            # abort if no decision has been made
             if msg == 'start':
+                self.vote_responses[vote_id] = 0
+                self.votes[vote_id][0] = self.vote_responses[vote_id]
                 cur_time = time.time()
                 self.log_status(cur_time, vote_id, 'abort')
+                for node, queue in self.out_q.items():
+                    self.enqueue_with_failure(node, Abort(vote_id))
+                if vote_id in self.votes:
+                    del self.votes[vote_id]
 
     def run(self):
         while True:
@@ -232,7 +245,7 @@ class MasterNode(Node):
                 for node, queue in self.in_q.items():
                     self.receive_queue_with_failure(node)
 
-                # collect messages from other nodes
+                # collect messages from other nodes and decide to commit or abort
                 for vote_id, votes in list(self.votes.items()):
                     abort = False
                     if not (-1 in votes):
@@ -243,17 +256,17 @@ class MasterNode(Node):
                             # all vote YES
                             for node, queue in self.out_q.items():
                                 self.enqueue_with_failure(node, Commit(vote_id))
-                            logging.info(f'Master decides to commit vote {vote_id}')
+                            logging.info(f'Master decides to commit transaction {vote_id}')
                             del self.votes[vote_id]
                         else:
                             abort = True
-                            logging.info(f'Master decides to abort vote {vote_id} because of partial agreement')
+                            logging.info(f'Master decides to abort transaction {vote_id} because of partial agreement')
                     elif 0 in votes:
                         abort = True
-                        logging.info(f'Master decides to abort vote {vote_id} because of partial agreement')
+                        logging.info(f'Master decides to abort transaction {vote_id} because of partial agreement')
                     elif time.time() > self.vote_req_times[vote_id] + self.timeout:
                         abort = True
-                        logging.info(f'Master decides to abort vote {vote_id} because of timeout')
+                        logging.info(f'Master decides to abort transaction {vote_id} because of timeout')
 
                     if abort:
                         cur_time = time.time()
@@ -262,11 +275,11 @@ class MasterNode(Node):
                             self.enqueue_with_failure(node, Abort(vote_id))
                         del self.votes[vote_id]
 
-            # send votes
+            # check tasks
             for i, task in enumerate(self.tasks):
                 cur_time = time.time()
                 if cur_time - self.start_time > task.time_to_execute:
-                    if not self.killed and isinstance(task, VoteResponse):
+                    if not self.killed and isinstance(task, SendVoteRequest):
                         self.log_status(cur_time, task.vote_id, 'start')
                         task.exec(self)
                         logging.info(f'Execute {task} at time {(time.time() - self.start_time) :.1f}s')

@@ -1,17 +1,13 @@
-import random
+import os
+import shutil
+
 from queue import Queue
-import sys
-import time
-import logging
-from threading import Event
 
 from algo.nodes import Node, MasterNode
 from algo.tasks import *
 
-observer = None
-master = None
+
 nodes = dict()
-event = Event()
 
 
 def create_node(node_id: int, vote_responses: dict, tasks: list, node_cls=Node):
@@ -41,18 +37,18 @@ def create_node(node_id: int, vote_responses: dict, tasks: list, node_cls=Node):
     return node1
 
 
-def link_failure(send_node, receive_node, start_time, end_time):
+def link_failure(from_node, to_node, start_time, end_time):
     """
     Simulate link failures for channels, all messages in the channel would be discard during this time
-    :param send_node:  sender of the channel
-    :param receive_node:  receiver of the channel
+    :param from_node:  sender of the channel
+    :param to_node:  receiver of the channel
     :param start_time:  the time when the link failure occurs
     :param end_time:  the time when the link failure is repaired
     :return:
     """
     period = (start_time, end_time)
-    send_node.out_q_failure[receive_node.node_id].append(period)
-    receive_node.in_q_failure[send_node.node_id].append(period)
+    from_node.out_q_failure[to_node.node_id].append(period)
+    to_node.in_q_failure[from_node.node_id].append(period)
 
 
 def network_partition(node_group1, node_group2, start_time, end_time):
@@ -71,13 +67,18 @@ def network_partition(node_group1, node_group2, start_time, end_time):
             link_failure(n2, n1, start_time, end_time)
 
 
+def stop():
+    global nodes
+    for node_id, node in nodes.items():
+        node.terminate()
+        node.join()
+
+    nodes = dict()
+
+
 def main():
-
-    import os
     if os.path.exists('logs'):
-        import shutil
         shutil.rmtree('logs')
-
     os.mkdir('logs')
 
     logging.basicConfig(level=logging.INFO, format='%(asctime)s, %(levelname)s: %(message)s',
@@ -103,6 +104,7 @@ def main():
     # link_failure(participant1, master, 2, 5)
     # link_failure(master, participant1, 2, 5)
     network_partition([master, participant1], [participant2], 2, 5)
+
 
 if __name__ == '__main__':
     main()
