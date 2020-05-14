@@ -18,7 +18,7 @@ python (>=3.7)
 ```
 
 ### Run Tests
-`python -m tests`
+`python -m tests -v`
 
 ### Protocol and Implementation
 This distributed banking system is implemented based on multi-thread, where each node is one 
